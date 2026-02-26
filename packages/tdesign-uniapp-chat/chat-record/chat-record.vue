@@ -74,7 +74,7 @@
             </view>
             <!-- 2. 录音中取消/异常/未识别状态：红色气泡，省略号 -->
             <view
-              v-else-if="(status === 'recording' && touchStatus === 'release_cancel') || status === 'error' || status === 'unknow'"
+              v-else-if="status === 'error' || status === 'unknow'"
               class="cancel-icon"
             />
             <!-- 3. 录音结束：显示识别结果（可编辑） -->
@@ -157,33 +157,22 @@
           </view>
 
           <!-- 录音中：大圆背景和取消按钮 -->
-          <!-- <template> -->
           <!-- 大圆背景 -->
           <view :class="[classPrefix + '-audio-input__ft__bg']" />
 
           <!-- 取消按钮 -->
-          <!-- <view
-              class="shape-btn left-btn"
-              :class="{ active: touchStatus === 'release_cancel' }"
-            >
-              <view
-                v-if="touchStatus === 'release_cancel'"
-                class="btn-hint"
-              >
-                <text class="word word-1">
-                  上滑
-                </text>
-                <text class="word word-2">
-                  取消
-                </text>
-              </view>
-              <view class="btn-label">
-                <text class="word">
-                  取消
-                </text>
-              </view>
-            </view> -->
-          <!-- </template> -->
+          <view
+            v-if="status === 'stop' || status === 'error' || status === 'unknow'"
+            class="shape-btn left-btn"
+            :class="{ active: status === 'stop' || status === 'error' || status === 'unknow' }"
+            @click="handleCancelSend"
+          >
+            <view class="btn-label">
+              <text class="word">
+                取消
+              </text>
+            </view>
+          </view>
         </view>
       </view>
     </view>
@@ -228,6 +217,8 @@ export default uniComponent({
       isWaitingForStop: false, // 是否正在等待识别停止
       restartRetryCount: 0, // 重新说话重试次数
       doStartRetryCount: 0, // doStartRecord 重试次数
+      activeBtnCancel: false, // 取消按钮激活状态
+      activeBtnSend: false, // 发送按钮激活状态
       bottomHeight: 0, // 底部高度
       autoSendHeight: true, // 是否自动抬升发送按钮高度
       windowHeight: 0, // 窗口高度，用于手指滑动判断
@@ -352,18 +343,29 @@ export default uniComponent({
      * @description 重置录音状态
      */
     resetRecordState() {
+      console.log('resetRecordState 被调用，当前状态:', {
+        showMask: this.showMask,
+        recordStatus: this.recordStatus,
+        isStarted: this.isStarted,
+        isWaitingForStop: this.isWaitingForStop,
+      });
       this.showMask = false;
       this.translateResult = '';
       this.recordStatus = '';
       this.touchStatus = '';
       this.recordCountDown = -1;
       this.startTime = 0;
+      this.isStarted = false;
+      this.isRecognizing = false;
+      this.restartRetryCount = 0;
+      this.doStartRetryCount = 0;
       // 注意：isWaitingForStop 不在此处重置，只应在 onStop/onError 回调中重置
       // 清除可能存在的延迟录音定时器
       if (startRecordTimer) {
         clearTimeout(startRecordTimer);
         startRecordTimer = null;
       }
+      console.log('resetRecordState 执行完成，showMask:', this.showMask);
     },
     /**
      * @description 获取窗口高度
@@ -448,7 +450,9 @@ export default uniComponent({
      * @description 取消发送语音
      */
     handleCancelSend() {
+      console.log('handleCancelSend 被调用，当前 showMask:', this.showMask);
       this.resetRecordState();
+      console.log('handleCancelSend 执行后，showMask:', this.showMask);
     },
     /**
      * @description 开始录音
@@ -492,6 +496,8 @@ export default uniComponent({
       this.touchStatus = 'bottom';
       // 记录开始录音时间
       this.startTime = new Date().getTime();
+      // 立即显示 mask，让用户可以上滑取消
+      this.showMask = true;
 
       // 500ms后开始录音，模拟长按效果，避免误操作
       startRecordTimer = setTimeout(() => {
@@ -689,7 +695,8 @@ export default uniComponent({
 
       // 根据startTime判断是否已经自动触发停止录音接口，避免二次调用
       if (this.startTime === 0) {
-        console.log('startTime为0，已停止过');
+        console.log('startTime为0，已停止过，直接关闭mask');
+        this.resetRecordState();
         return;
       }
 
@@ -698,7 +705,7 @@ export default uniComponent({
 
       // 处理上滑取消
       if (this.touchStatus === 'release_cancel') {
-        console.log('用户取消发送，直接关闭');
+        console.log('用户取消发送，直接关闭 mask');
         // 标记正在等待识别停止
         this.isWaitingForStop = true;
         if (manager) {
@@ -749,11 +756,6 @@ export default uniComponent({
         return;
       }
 
-      // 只有在录音状态才处理滑动（不在确认状态）
-      if (this.recordStatus !== 'recording') {
-        return;
-      }
-
       // 根据手势方向判断交互状态
       const { changedTouches } = e;
       if (!changedTouches || !changedTouches[0]) {
@@ -801,18 +803,8 @@ export default uniComponent({
         manager.stop();
       }
 
-      if (recordTimer) {
-        clearInterval(recordTimer);
-        recordTimer = null;
-      }
-      if (startRecordTimer) {
-        clearTimeout(startRecordTimer);
-        startRecordTimer = null;
-      }
-
       // 注意：isRecognizing 和 isWaitingForStop 会在 onStop 或 onError 回调中重置
       this.resetRecordState();
-      this.isStarted = false;
     },
     /**
      * @description 发送语音消息，可以重写此方法
