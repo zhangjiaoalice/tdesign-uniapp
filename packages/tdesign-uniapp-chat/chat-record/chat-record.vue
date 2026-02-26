@@ -31,136 +31,159 @@
     </view>
     <view
       class="cover-ng-bar"
-      :class="[classPrefix + '-audio-input', status, showMask ? 'show' : '']"
+      :class="[classPrefix + '-audio-input', showMask ? 'show' : '']"
     >
-      <view :class="[classPrefix + '-audio-input__mask']" />
-      <view :class="[classPrefix + '-audio-input__main']">
-        <!-- 动画图标 -->
-        <view :class="[classPrefix + '-audio-input-ani']">
-          <view class="ani-cir diff-start">
-            <view class="ani-cir-1" />
-            <view class="ani-cir-2" />
-            <view class="ani-cir-3" />
-            <view class="ani-cir-4" />
-          </view>
-          <view class="ani-wrap">
-            <view class="ani-inner" />
-            <view class="ani-mask" />
-            <view
-              class="ani-main"
-              :class="status === 'recording' ? 'ani-start' : 'ani-end'"
-            />
-          </view>
-        </view>
+      <!-- 遮罩层 -->
+      <view
+        :class="[classPrefix + '-audio-input__mask']"
+        @click="handleCancelSend"
+      />
 
-        <!-- 内容区域 -->
-        <view :class="[classPrefix + '-audio-input__con', status === 'cancel' ? 'disabled' : '']">
+      <view :class="[classPrefix + '-audio-input__main']">
+        <!-- 动画图标/气泡区域 -->
+        <view
+          v-if="showMask"
+          :class="[classPrefix + '-audio-input-ani', 'fade-in']"
+        >
+          <!-- 气泡内容 -->
           <view
-            v-if="status !== 'recording' && !translateSuccess && touchStatus !== 'top'"
-            :class="[classPrefix + '-audio-input__con__inner']"
+            class="bubble-container"
+            :class="[bubbleStatusClass]"
           >
-            {{
-              status === 'unknow' ? '不好意思，未能识别您的语音' : '我在听，请说话'
-            }}
+            <!-- 1. 录音中正常状态：显示实时识别文字+音量条 -->
+            <view
+              v-if="status === 'recording' && touchStatus !== 'release_cancel'"
+              class="convert-content"
+            >
+              <text class="convert-text">
+                {{ translateResult || '' }}
+              </text>
+              <!-- 省略号表示正在识别 -->
+              <view
+                v-if="translateResult"
+                class="convert-dots"
+              />
+              <!-- 音量条 -->
+              <view class="audio-wave-mini">
+                <view
+                  v-for="i in 5"
+                  :key="i"
+                  class="wave-item"
+                />
+              </view>
+            </view>
+            <!-- 2. 录音中取消/异常/未识别状态：红色气泡，省略号 -->
+            <view
+              v-else-if="(status === 'recording' && touchStatus === 'release_cancel') || status === 'error' || status === 'unknow'"
+              class="cancel-icon"
+            />
+            <!-- 3. 录音结束：显示识别结果（可编辑） -->
+            <view
+              v-else-if="status === 'stop' || status === 'complete'"
+              class="convert-content"
+            >
+              <textarea
+                v-model="translateResult"
+                class="editable-textarea"
+                :maxlength="-1"
+                placeholder="语音识别中..."
+              />
+            </view>
           </view>
-          <textarea
-            v-else
-            :class="[classPrefix + '-audio-input__con__ta', bottomHeight === 0 ? 'txt-limit-9' : 'txt-limit-5']"
-            maxlength="-1"
-            auto-height
-            :value="translateResult"
-            @focus="focusTextarea"
-            @blur="blurTextarea"
-          />
         </view>
 
         <!-- 底部区域 -->
-        <view :class="[classPrefix + '-audio-input__ft']">
+        <view
+          v-if="showMask"
+          :class="[classPrefix + '-audio-input__ft', touchStatus, 'fade-in']"
+        >
+          <!-- 状态4：录音结束后的确认按钮区域 (Send / Cancel) -->
           <view
-            v-if="status === 'cancel'"
-            :class="[classPrefix + '-audio-input__ft__tips']"
-          >
-            松开手指 即可取消
-          </view>
-          <view
-            v-else-if="status === 'unknow'"
-            :class="[classPrefix + '-audio-input__ft__tips']"
-          >
-            点击下方重新开始说话
-          </view>
-          <view
-            v-else-if="status === 'normal'"
-            :class="[classPrefix + '-audio-input__ft__tips']"
-          >
-            松手完成 上滑取消
-          </view>
-
-          <view
-            v-if="showRecordCountDown"
-            :class="[classPrefix + '-audio-input__ft__tips__inner']"
-          >
-            {{ recordCountDown }}秒后停止语音输入
-          </view>
-
-          <!-- 加载动画 -->
-          <i class="audio-loading-icon">
-            <i class="audio-loading-dot dot-1" />
-            <i class="audio-loading-dot dot-1" />
-            <i class="audio-loading-dot dot-2" />
-            <i class="audio-loading-dot dot-2" />
-            <i class="audio-loading-dot dot-3" />
-            <i class="audio-loading-dot dot-2" />
-            <i class="audio-loading-dot dot-3" />
-            <i class="audio-loading-dot dot-2" />
-            <i class="audio-loading-dot dot-1" />
-            <i class="audio-loading-dot dot-1" />
-            <i class="audio-loading-dot dot-1" />
-          </i>
-
-          <!-- 操作按钮 -->
-          <view
-            class="speak-close-btn"
-            @click="handleCancelSend"
-          >
-            <i class="close-icon" />
-          </view>
-          <view
-            class="speak-btn"
-            @touchstart="startRecord"
-            @touchend="stopRecord"
-            @touchmove="touchmove"
-            @touchcancel="touchcancel"
-          >
-            <i class="speak-icon" />
-            <view class="tips-txt">
-              按住说话
-            </view>
-          </view>
-
-          <!-- 发送控制 -->
-          <view
-            class="keyboard-cover"
-            :class="[classPrefix + '-audio-input__ft__ct']"
-            :style="{
-              'margin-bottom': bottomHeight + 'px',
-            }"
+            v-if="status === 'stop' || status === 'complete'"
+            class="confirm-actions"
           >
             <view
-              :class="[classPrefix + '-audio-input__ft__btn']"
-              class="btn-close"
+              class="action-btn btn-cancel"
+              :class="{ active: activeBtnCancel }"
               @click="handleCancelSend"
+              @touchstart="activeBtnCancel = true"
+              @touchend="activeBtnCancel = false"
+              @touchcancel="activeBtnCancel = false"
             >
-              <i class="close-icon" />
+              <view class="icon-wrapper">
+                <t-icon
+                  name="rollback"
+                  size="48rpx"
+                  color="#FFFFFF"
+                />
+              </view>
+              <text class="btn-text">
+                取消
+              </text>
             </view>
             <view
-              :class="[classPrefix + '-audio-input__ft__btn']"
-              class="btn-send"
+              class="action-btn btn-send"
+              :class="{ active: activeBtnSend }"
               @click="handleSendVoiceMsg"
+              @touchstart="activeBtnSend = true"
+              @touchend="activeBtnSend = false"
+              @touchcancel="activeBtnSend = false"
             >
-              发送
+              <text>发送</text>
             </view>
           </view>
+
+          <!-- 录音中状态提示文案 -->
+          <view
+            v-else-if="status === 'recording'"
+            class="tips-text"
+          >
+            <text class="text">
+              松手完成，上滑取消
+            </text>
+          </view>
+
+          <!-- 录音异常/未识别状态提示文案 -->
+          <view
+            v-else-if="status === 'error' || status === 'unknow'"
+            class="tips-text"
+            @touchstart="restartRecord"
+            @touchend="stopRecord"
+            @touchcancel="handleCancelSend"
+          >
+            <text class="text">
+              按住重新说话
+            </text>
+          </view>
+
+          <!-- 录音中：大圆背景和取消按钮 -->
+          <!-- <template> -->
+          <!-- 大圆背景 -->
           <view :class="[classPrefix + '-audio-input__ft__bg']" />
+
+          <!-- 取消按钮 -->
+          <!-- <view
+              class="shape-btn left-btn"
+              :class="{ active: touchStatus === 'release_cancel' }"
+            >
+              <view
+                v-if="touchStatus === 'release_cancel'"
+                class="btn-hint"
+              >
+                <text class="word word-1">
+                  上滑
+                </text>
+                <text class="word word-2">
+                  取消
+                </text>
+              </view>
+              <view class="btn-label">
+                <text class="word">
+                  取消
+                </text>
+              </view>
+            </view> -->
+          <!-- </template> -->
         </view>
       </view>
     </view>
@@ -179,6 +202,7 @@ let recordTimer = null;
 // eslint-disable-next-line no-undef
 const plugin = requirePlugin('WechatSI');
 const manager = plugin.getRecordRecognitionManager();
+console.error('manager============:', manager);
 
 export default uniComponent({
   name: 'ChatRecord',
@@ -200,6 +224,10 @@ export default uniComponent({
       recordAuthSetting: false, // 是否已授权语音输入
       recordAuthStatus: true, // 是否展示拒绝授权文案
       isStarted: false, // 是否点击了 // 解决点击结束太快，授权信息还没拿到的情况
+      isRecognizing: false, // 是否正在识别中
+      isWaitingForStop: false, // 是否正在等待识别停止
+      restartRetryCount: 0, // 重新说话重试次数
+      doStartRetryCount: 0, // doStartRecord 重试次数
       bottomHeight: 0, // 底部高度
       autoSendHeight: true, // 是否自动抬升发送按钮高度
       windowHeight: 0, // 窗口高度，用于手指滑动判断
@@ -207,21 +235,27 @@ export default uniComponent({
   },
   computed: {
     translateSuccess() {
-      return this.translateResult !== '-1' && this.translateResult;
+      return this.translateResult?.length;
     },
     showRecordCountDown() {
       return this.recordCountDown >= 0;
     },
     status() {
-      // 只要检查到用户上滑，但是还没松开手指的时候就转换为cancel状态
-      if (this.touchStatus === 'top') return 'cancel';
-      // 正在录音中的状态
-      if (this.recordStatus === 'recording') return 'recording';
-      if (this.recordStatus === 'thinking') return 'thinking';
+      // 录音完成状态
       if (this.recordStatus === 'stop' && !this.translateSuccess) return 'unknow';
       if (this.recordStatus === 'stop' && this.translateSuccess) return 'complete';
       if (this.recordStatus === 'error') return 'error';
-      return 'normal';
+      return this.recordStatus || 'normal';
+    },
+    bubbleStatusClass() {
+      // 取消状态：红色气泡
+      if (this.touchStatus === 'release_cancel') return 'bubble-red';
+      // 停止/完成状态：宽气泡
+      if (this.status === 'stop' || this.status === 'complete') {
+        return 'bubble-wide';
+      }
+      // 默认：蓝色气泡
+      return 'bubble-blue';
     },
   },
   mounted() {
@@ -252,30 +286,44 @@ export default uniComponent({
       manager.onStop = (res) => {
         console.log('onStop record file path', res);
         console.log('result', res.result);
-        const { tempFilePath, duration } = res;
+        const { tempFilePath, duration, result } = res;
+
+        // 标记识别已完成
+        this.isRecognizing = false;
+        this.isWaitingForStop = false;
 
         // 如果是取消状态，不保存录音信息
-        if (this.touchStatus === 'top') {
+        if (this.touchStatus === 'release_cancel') {
           console.log('用户取消发送，不保存录音');
+          this.isStarted = false;
           this.resetRecordState();
           return;
         }
 
         this.voiceInfo.voicePath = tempFilePath;
         this.voiceInfo.duration = Math.floor(duration / 1000) || 1;
-        this.recordStatus = 'stop';
-        this.touchStatus = '';
+
+        // 重置录音开始状态，允许再次点击
+        this.isStarted = false;
+
+        // 如果有识别结果，保存并进入完成状态
+        if (result && result !== '-1') {
+          this.translateResult = result;
+          this.recordStatus = 'stop';
+        } else {
+          this.recordStatus = 'stop';
+        }
       };
 
       manager.onStart = (res) => {
         console.log('onStart 成功开始录音识别', res);
-        this.recordStatus = 'thinking';
+        this.recordStatus = 'recording';
+        this.isRecognizing = true;
       };
 
       manager.onRecognize = (res) => {
         console.log('onRecognize 识别中:', res.result);
         if (res.result && !res.end) {
-          this.recordStatus = 'recording';
           this.translateResult = res.result;
         }
       };
@@ -283,8 +331,14 @@ export default uniComponent({
       manager.onError = (res) => {
         console.error('录音错误:', res.msg);
         this.recordStatus = 'error';
-        this.touchStatus = '';
-        this.translateResult = '-1';
+        this.touchStatus = 'bottom';
+        this.translateResult = '';
+
+        // 标记识别已完成（出错了）
+        this.isRecognizing = false;
+        this.isWaitingForStop = false;
+        // 重置录音开始状态，允许再次点击
+        this.isStarted = false;
 
         // 给用户友好的错误提示
         uni.showToast({
@@ -304,6 +358,12 @@ export default uniComponent({
       this.touchStatus = '';
       this.recordCountDown = -1;
       this.startTime = 0;
+      // 注意：isWaitingForStop 不在此处重置，只应在 onStop/onError 回调中重置
+      // 清除可能存在的延迟录音定时器
+      if (startRecordTimer) {
+        clearTimeout(startRecordTimer);
+        startRecordTimer = null;
+      }
     },
     /**
      * @description 获取窗口高度
@@ -379,7 +439,7 @@ export default uniComponent({
      * @description 直接发送语音消息
      */
     handleSendVoiceMsg() {
-      if (this.translateResult && this.translateResult !== '-1') {
+      if (this.translateResult?.length) {
         this.sendVoiceMsg(this.translateResult);
       }
       this.resetRecordState();
@@ -394,8 +454,6 @@ export default uniComponent({
      * @description 开始录音
      */
     async startRecord(e) {
-      console.log('开始录音触发', e);
-
       // 防止重复触发
       if (this.isStarted) {
         console.log('已经在录音中，忽略');
@@ -423,6 +481,14 @@ export default uniComponent({
         e.preventDefault();
       }
 
+      // 记录起始触摸点，用于手势判断
+      if (e && e.changedTouches && e.changedTouches[0]) {
+        this.startTouch = {
+          x: e.changedTouches[0].clientX,
+          y: e.changedTouches[0].clientY,
+        };
+      }
+
       this.touchStatus = 'bottom';
       // 记录开始录音时间
       this.startTime = new Date().getTime();
@@ -434,15 +500,16 @@ export default uniComponent({
           return;
         }
 
-        console.log('开始录音');
-        this.showMask = true;
-
         // 确保录音管理器已初始化
         if (!manager) {
           this.initRecorderManager();
         }
 
         manager.start({ duration: 30000, lang: 'zh_CN' });
+
+        console.log('开始录音---');
+        this.showMask = true;
+        this.recordStatus = 'recording';
 
         // 最大支持60s连续录音，50s时开始倒计时
         recordTimer = setInterval(() => {
@@ -462,6 +529,132 @@ export default uniComponent({
       }, 500);
     },
     /**
+     * @description 重新说话（点击立即开始，无需长按）
+     */
+    restartRecord() {
+      console.log('restartRecord 被调用，当前 isStarted:', this.isStarted, 'isWaitingForStop:', this.isWaitingForStop, '重试次数:', this.restartRetryCount, '当前状态:', this.status);
+
+      // 防止重复触发
+      if (this.isStarted) {
+        console.log('已经在录音中，忽略');
+        return;
+      }
+
+      // 如果正在等待上一次的识别停止，延迟重试
+      if (this.isWaitingForStop) {
+        this.restartRetryCount += 1;
+        if (this.restartRetryCount > 50) {
+          console.log('重试次数过多，放弃');
+          this.restartRetryCount = 0;
+          this.isWaitingForStop = false;
+          return;
+        }
+        console.log('等待上一次识别停止，延迟重试... 次数:', this.restartRetryCount);
+        setTimeout(() => {
+          this.restartRecord();
+        }, 100);
+        return;
+      }
+
+      // 重置重试计数
+      this.restartRetryCount = 0;
+      this.isStarted = true;
+      console.log('设置 isStarted = true');
+
+      // 检查授权（同步方式）
+      this.getVoiceAuthSetting().then(() => {
+        console.log('授权状态:', this.recordAuthSetting);
+        if (!this.recordAuthSetting) {
+          console.log('未授权，申请授权');
+          this.applyAuth().then(() => {
+            this.isStarted = false;
+          });
+          return;
+        }
+
+        // 授权通过，开始录音
+        this.doStartRecord();
+      })
+        .catch((error) => {
+          console.error('授权检查失败', error);
+          this.isStarted = false;
+        });
+    },
+
+    /**
+     * @description 实际开始录音
+     */
+    doStartRecord() {
+      console.log('执行 doStartRecord，isRecognizing:', this.isRecognizing, 'isWaitingForStop:', this.isWaitingForStop, '重试次数:', this.doStartRetryCount);
+
+      // 如果还在识别中或等待停止，延迟200ms再试
+      if (this.isRecognizing || this.isWaitingForStop) {
+        this.doStartRetryCount += 1;
+        if (this.doStartRetryCount > 30) {
+          console.log('doStartRecord 重试次数过多，放弃');
+          this.doStartRetryCount = 0;
+          this.isStarted = false;
+          return;
+        }
+        console.log('识别中或等待停止，延迟重试... 次数:', this.doStartRetryCount);
+        setTimeout(() => {
+          this.doStartRecord();
+        }, 200);
+        return;
+      }
+
+      // 重置重试计数
+      this.doStartRetryCount = 0;
+
+      // 清除之前可能存在的录音定时器
+      if (recordTimer) {
+        clearInterval(recordTimer);
+        recordTimer = null;
+      }
+
+      // 重置状态
+      this.resetRecordState();
+      this.touchStatus = 'bottom';
+      this.startTime = new Date().getTime();
+
+      // 确保录音管理器已初始化
+      if (!manager) {
+        console.log('初始化录音管理器');
+        this.initRecorderManager();
+      }
+
+      // 立即开始录音（无延迟）
+      console.log('调用 manager.start');
+      try {
+        manager.start({ duration: 30000, lang: 'zh_CN' });
+      } catch (err) {
+        console.error('manager.start 失败:', err);
+        this.isRecognizing = false;
+        this.isStarted = false;
+        return;
+      }
+
+      console.log('重新说话，开始录音---');
+      this.showMask = true;
+      this.recordStatus = 'recording';
+
+      // 最大支持60s连续录音，50s时开始倒计时
+      recordTimer = setInterval(() => {
+        const recordTime = new Date().getTime() - this.startTime;
+        if (recordTime > 50000) {
+          if (this.recordCountDown === -1) {
+            this.recordCountDown = 10;
+          } else {
+            this.recordCountDown -= 1;
+          }
+        }
+        if (recordTime > 60000) {
+          console.log('录音超时，自动停止');
+          this.stopRecord();
+        }
+      }, 1000);
+    },
+    /**
      * @description 结束录音
      */
     stopRecord() {
@@ -469,6 +662,7 @@ export default uniComponent({
         isStarted: this.isStarted,
         startTime: this.startTime,
         touchStatus: this.touchStatus,
+        isRecognizing: this.isRecognizing,
       });
 
       // 标记录音结束
@@ -489,8 +683,7 @@ export default uniComponent({
       // 松开的时候，判断有没有授权
       if (!this.recordAuthStatus) {
         console.log('未授权，取消录音');
-        this.showMask = false;
-        this.startTime = 0;
+        this.resetRecordState();
         return;
       }
 
@@ -503,14 +696,15 @@ export default uniComponent({
       const recordTime = new Date().getTime() - this.startTime;
       console.log('录音时长', recordTime);
 
-      // 如果手指上滑到取消区域，取消发送
-      if (this.touchStatus === 'top') {
-        console.log('用户取消发送');
+      // 处理上滑取消
+      if (this.touchStatus === 'release_cancel') {
+        console.log('用户取消发送，直接关闭');
+        // 标记正在等待识别停止
+        this.isWaitingForStop = true;
         if (manager) {
           manager.stop();
         }
         this.resetRecordState();
-        this.startTime = 0;
         uni.showToast({
           icon: 'none',
           title: '已取消发送',
@@ -519,20 +713,24 @@ export default uniComponent({
         return;
       }
 
-      // 根据当前时间 减去 startTime判断录音时间是否大于500ms，避免录音时间过短
+      // 根据当前时间判断录音时间是否大于500ms，避免录音时间过短
       if (recordTime > 500) {
-        // 语音消息时长
-        console.log('停止录音');
+        console.log('停止录音，进入确认状态');
         this.voiceInfo.duration = Math.floor(recordTime / 1000) || 1;
         this.startTime = 0;
 
+        // 标记正在等待识别停止
+        this.isWaitingForStop = true;
         if (manager) {
           manager.stop();
         }
+        // 进入确认状态，显示发送/取消按钮，不自动关闭 mask
+        this.recordStatus = 'stop';
       } else {
         console.log('录音时间太短');
-        this.showMask = false;
-        this.startTime = 0;
+        // 标记正在等待识别停止
+        this.isWaitingForStop = true;
+        this.resetRecordState();
         if (manager) {
           manager.stop();
         }
@@ -551,28 +749,42 @@ export default uniComponent({
         return;
       }
 
-      // 根据clientY坐标值判断目前手指所处区域，触发不同的交互（发送、取消发送）
-      const bottomHeight = 150;
+      // 只有在录音状态才处理滑动（不在确认状态）
+      if (this.recordStatus !== 'recording') {
+        return;
+      }
+
+      // 根据手势方向判断交互状态
       const { changedTouches } = e;
       if (!changedTouches || !changedTouches[0]) {
         return;
       }
 
-      const { clientY } = changedTouches[0];
+      const { clientX, clientY } = changedTouches[0];
+      const deltaX = clientX - this.startTouch.x;
+      const deltaY = clientY - this.startTouch.y;
       const oldStatus = this.touchStatus;
 
-      // 使用缓存的窗口高度
-      if (clientY > this.windowHeight - bottomHeight) {
-        this.touchStatus = 'bottom';
+      // 判断手势方向：需要向上滑动一定距离才触发
+      if (deltaY < -40) {
+        // 向上滑动超过阈值
+        if (deltaX < -40) {
+          // 左上滑动：取消发送
+          this.touchStatus = 'release_cancel';
+        } else {
+          // 其他方向：保持默认
+          this.touchStatus = 'bottom';
+        }
       } else {
-        this.touchStatus = 'top';
+        // 未触发上滑，保持默认状态
+        this.touchStatus = 'bottom';
       }
 
       // 状态变化时打印日志
       if (oldStatus !== this.touchStatus) {
         console.log('手指位置变化', {
-          clientY,
-          windowHeight: this.windowHeight,
+          deltaX,
+          deltaY,
           touchStatus: this.touchStatus,
         });
       }
@@ -583,6 +795,8 @@ export default uniComponent({
     touchcancel() {
       console.log('录音被打断');
 
+      // 标记正在等待识别停止
+      this.isWaitingForStop = true;
       if (manager) {
         manager.stop();
       }
@@ -596,6 +810,7 @@ export default uniComponent({
         startRecordTimer = null;
       }
 
+      // 注意：isRecognizing 和 isWaitingForStop 会在 onStop 或 onError 回调中重置
       this.resetRecordState();
       this.isStarted = false;
     },
