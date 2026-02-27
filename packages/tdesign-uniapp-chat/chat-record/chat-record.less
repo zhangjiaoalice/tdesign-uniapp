@@ -442,10 +442,11 @@
         line-height: @chat-record-tips-line-height;
         z-index: 10;
         // pointer-events: none;
+        
       }
 
       // 状态变化：文字变白色
-      &.release_cancel .tips-text {
+      .tips-text--cancel {
         color: @chat-record-color-white;
       }
 
@@ -455,7 +456,6 @@
         height: 100%;
         position: absolute;
         bottom: 0;
-        pointer-events: none;
 
         &::before {
           content: '';
@@ -473,7 +473,7 @@
       }
 
       // 状态变化：大圆变深色（取消状态）
-      &.release_cancel .@{chat-record}-audio-input__ft__bg::before {
+      &__bg--cancel::before {
         background-color: @chat-record-circle-bg-active;
         border-color: @chat-record-circle-bg-active;
       }

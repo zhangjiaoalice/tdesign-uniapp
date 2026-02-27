@@ -52,7 +52,7 @@
           >
             <!-- 1. 录音中正常状态：显示实时识别文字+音量条 -->
             <view
-              v-if="status === 'recording' && touchStatus !== 'release_cancel'"
+              v-if="status === 'recording'"
               class="convert-content"
             >
               <text class="convert-text">
@@ -136,7 +136,7 @@
           <!-- 录音中状态提示文案 -->
           <view
             v-else-if="status === 'recording'"
-            class="tips-text"
+            :class="[`tips-text`, { 'tips-text--cancel': touchStatus === 'release_cancel' || status !== 'recording'}]"
           >
             <text class="text">
               松手完成，上滑取消
@@ -146,7 +146,7 @@
           <!-- 录音异常/未识别状态提示文案 -->
           <view
             v-else-if="status === 'error' || status === 'unknow'"
-            class="tips-text"
+            :class="[`tips-text`, { 'tips-text--cancel': touchStatus === 'release_cancel' || status !== 'recording'}]"
             @touchstart="restartRecord"
             @touchend="stopRecord"
             @touchcancel="handleCancelSend"
@@ -158,13 +158,12 @@
 
           <!-- 录音中：大圆背景和取消按钮 -->
           <!-- 大圆背景 -->
-          <view :class="[classPrefix + '-audio-input__ft__bg']" />
+          <view :class="[classPrefix + '-audio-input__ft__bg', { [classPrefix + '-audio-input__ft__bg--cancel']: touchStatus === 'release_cancel' || status !== 'recording' }]" />
 
           <!-- 取消按钮 -->
           <view
             v-if="status === 'stop' || status === 'error' || status === 'unknow'"
-            class="shape-btn left-btn"
-            :class="{ active: status === 'stop' || status === 'error' || status === 'unknow' }"
+            class="shape-btn left-btn active"
             @click="handleCancelSend"
           >
             <view class="btn-label">
@@ -182,6 +181,7 @@
 <script>
 import { prefix } from 'tdesign-uniapp/common/config';
 import { uniComponent } from 'tdesign-uniapp/common/src/index';
+import touch from 'tdesign-uniapp/mixins/touch';
 
 const name = `${prefix}-chat-record`;
 
@@ -201,7 +201,7 @@ export default uniComponent({
     return {
       classPrefix: name,
       showMask: false, // 是否展示语音输入操作面板
-      touchStatus: 'bottom', // 语音输入 - 当前手指状态 top：取消， bottom：正常
+      touchStatus: 'bottom', // 语音输入 - 当前手指状态 release_cancel：取消， bottom：正常
       startTime: 0, // 开始录音时间
       recordCountDown: -1, // 语音输入倒计时
       translateResult: '', // 语音转文字结果
@@ -322,7 +322,7 @@ export default uniComponent({
       manager.onError = (res) => {
         console.error('录音错误:', res.msg);
         this.recordStatus = 'error';
-        this.touchStatus = 'bottom';
+        this.touchStatus = 'release_cancel';
         this.translateResult = '';
 
         // 标记识别已完成（出错了）
@@ -514,7 +514,6 @@ export default uniComponent({
         manager.start({ duration: 30000, lang: 'zh_CN' });
 
         console.log('开始录音---');
-        this.showMask = true;
         this.recordStatus = 'recording';
 
         // 最大支持60s连续录音，50s时开始倒计时
@@ -572,9 +571,13 @@ export default uniComponent({
         console.log('授权状态:', this.recordAuthSetting);
         if (!this.recordAuthSetting) {
           console.log('未授权，申请授权');
-          this.applyAuth().then(() => {
-            this.isStarted = false;
-          });
+          this.applyAuth()
+            .then(() => {
+              this.isStarted = false;
+            })
+            .catch(() => {
+              this.isStarted = false;
+            });
           return;
         }
 
@@ -612,16 +615,26 @@ export default uniComponent({
       // 重置重试计数
       this.doStartRetryCount = 0;
 
-      // 清除之前可能存在的录音定时器
+      // 清除之前可能存在的所有定时器
       if (recordTimer) {
         clearInterval(recordTimer);
         recordTimer = null;
       }
+      if (startRecordTimer) {
+        clearTimeout(startRecordTimer);
+        startRecordTimer = null;
+      }
 
-      // 重置状态
-      this.resetRecordState();
+      // 重置状态（保留 showMask）
+      this.translateResult = '';
+      this.recordStatus = 'recording';
       this.touchStatus = 'bottom';
+      this.recordCountDown = -1;
       this.startTime = new Date().getTime();
+      this.isStarted = true;
+      this.isRecognizing = true;
+      this.restartRetryCount = 0;
+      this.doStartRetryCount = 0;
 
       // 确保录音管理器已初始化
       if (!manager) {
@@ -641,8 +654,6 @@ export default uniComponent({
       }
 
       console.log('重新说话，开始录音---');
-      this.showMask = true;
-      this.recordStatus = 'recording';
 
       // 最大支持60s连续录音，50s时开始倒计时
       recordTimer = setInterval(() => {
