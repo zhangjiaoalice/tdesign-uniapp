@@ -309,36 +309,6 @@
       .generate-wave-delays(13);
     }
 
-    // 迷你音量条（录音中显示实时识别文字时使用）
-    .audio-wave-mini {
-      display: flex;
-      align-items: center;
-      height: 20rpx;
-      gap: 6rpx;
-      margin-top: 16rpx;
-
-      .wave-item {
-        width: 6rpx;
-        height: 16rpx;
-        background: @chat-record-color-white;
-        border-radius: 3rpx;
-        transform-origin: center;
-        will-change: transform;
-        animation: wave 1.2s infinite ease-in-out;
-      }
-
-      // LESS 循环生成 5 个波浪条的动画延迟
-      .generate-wave-delays-mini(@n, @i: 1) when (@i =< @n) {
-        .wave-item:nth-child(@{i}) {
-          animation-delay: unit((-1.0 + (@i - 1) * 0.15), s);
-        }
-
-        .generate-wave-delays-mini(@n, (@i + 1));
-      }
-
-      .generate-wave-delays-mini(5);
-    }
-
     // 取消图标（省略号）
     .cancel-icon {
       display: flex;
@@ -386,16 +356,6 @@
         -webkit-appearance: none;
       }
 
-      // 转文字预览文本
-      .convert-text {
-        width: 100%;
-        color: @chat-record-color-white;
-        font-family: "PingFang SC";
-        font-size: @chat-record-textarea-font-size;
-        font-weight: 600;
-        line-height: @chat-record-textarea-line-height;
-      }
-
       .convert-dots {
         align-self: flex-end;
         display: flex;
@@ -441,12 +401,12 @@
         font-weight: 600;
         line-height: @chat-record-tips-line-height;
         z-index: 10;
-        // pointer-events: none;
-        
+        pointer-events: none;
       }
 
       // 状态变化：文字变白色
-      .tips-text--cancel {
+      &.release_cancel .tips-text,
+      &.release_convert .tips-text {
         color: @chat-record-color-white;
       }
 
@@ -456,6 +416,7 @@
         height: 100%;
         position: absolute;
         bottom: 0;
+        pointer-events: none;
 
         &::before {
           content: '';
@@ -472,8 +433,9 @@
         }
       }
 
-      // 状态变化：大圆变深色（取消状态）
-      &__bg--cancel::before {
+      // 状态变化：大圆变深色
+      &.release_cancel .@{chat-record}-audio-input__ft__bg::before,
+      &.release_convert .@{chat-record}-audio-input__ft__bg::before {
         background-color: @chat-record-circle-bg-active;
         border-color: @chat-record-circle-bg-active;
       }
@@ -492,7 +454,7 @@
         padding-bottom: @chat-record-shape-btn-padding-bottom;
         box-sizing: border-box;
         transition: all 0.3s ease;
-        // pointer-events: none;
+        pointer-events: none;
         z-index: 1;
 
         &::before {
@@ -584,6 +546,52 @@
 
         &.active::before {
           background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='169' viewBox='0 0 170 169' fill='none'%3E%3Cpath d='M142.225 59.8918C158.733 58.4737 170.966 43.9418 169.548 27.4343C168.13 10.9265 153.598 -1.30612 137.09 0.111923C25.1861 9.72467 -81.5199 51.6215 -170.069 120.715L-133.159 168.019C-53.7697 106.073 41.8976 68.5101 142.225 59.8918Z' fill='%23DCDCDC'/%3E%3C/svg%3E");
+          transform: scale(1.1);
+        }
+      }
+
+      // 右侧按钮
+      .right-btn {
+        right: 0;
+        transform: scaleX(-1);
+
+        &::before {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='169' viewBox='0 0 170 169' fill='none'%3E%3Cpath d='M142.225 59.8918C158.733 58.4737 170.966 43.9418 169.548 27.4343C168.13 10.9265 153.598 -1.30612 137.09 0.111923C25.1861 9.72467 -81.5199 51.6215 -170.069 120.715L-133.159 168.019C-53.7697 106.073 41.8976 68.5101 142.225 59.8918Z' fill='%234B4B4B'/%3E%3C/svg%3E");
+        }
+
+        // btn-hint: "Release" + "to edit" + "text"
+        .btn-hint {
+          transform: scaleX(-1) translateZ(0); // 触发重绘防止文字残影
+
+          .word-1 {
+            transform: rotate(7deg) translateY(-10rpx);
+          }
+
+          .word-2 {
+            transform: rotate(12deg) translateY(5rpx);
+          }
+
+          .word-3 {
+            transform: rotate(17deg) translateY(20rpx);
+          }
+        }
+
+        // btn-label: "Convert" + "to Text"
+        .btn-label {
+          transform: scaleX(-1);
+
+          .word-1 {
+            transform: rotate(9deg) translateY(-12rpx);
+          }
+
+          .word-2 {
+            transform: rotate(16deg) translateY(10rpx);
+          }
+        }
+
+        &.active::before {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='169' viewBox='0 0 170 169' fill='none'%3E%3Cpath d='M142.225 59.8918C158.733 58.4737 170.966 43.9418 169.548 27.4343C168.13 10.9265 153.598 -1.30612 137.09 0.111923C25.1861 9.72467 -81.5199 51.6215 -170.069 120.715L-133.159 168.019C-53.7697 106.073 41.8976 68.5101 142.225 59.8918Z' fill='%23DCDCDC'/%3E%3C/svg%3E");
+          transform: scale(1.1);
         }
       }
 
