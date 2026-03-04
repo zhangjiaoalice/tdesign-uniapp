@@ -63,9 +63,15 @@
             </view>
             <!-- 2. 取消状态：红色气泡，省略号 -->
             <view
-              v-else-if="interactStatus === 'release_cancel'"
+              v-else-if="interactStatus === 'release_cancel' || processStatus === 'error'"
               class="cancel-icon"
             />
+            <view
+              v-if="processStatus === 'error'"
+              class="cancel-text"
+            >
+              未识别到语音
+            </view>
             <!-- 3. 转文字状态或确认状态：可编辑输入框 -->
             <view
               v-else-if="interactStatus === 'release_convert' || processStatus === 'confirm'"
@@ -108,14 +114,15 @@
 
           <!-- 状态4：松手后的确认按钮区域 (Send / Cancel) -->
           <view
-            v-if="processStatus === 'confirm'"
+            v-if="processStatus === 'confirm' || processStatus === 'error'"
             class="confirm-actions"
+            :class="{ 'is-error': processStatus === 'error' }"
           >
             <view
               class="action-btn btn-cancel"
-              :class="{ active: activeBtnCancel }"
+              :class="{ active: activeBtnCancel, disabled: processStatus === 'error' }"
               @click="handleCancelSend"
-              @touchstart="activeBtnCancel = true"
+              @touchstart="processStatus !== 'error' && (activeBtnCancel = true)"
               @touchend="activeBtnCancel = false"
               @touchcancel="activeBtnCancel = false"
             >
@@ -132,9 +139,9 @@
             </view>
             <view
               class="action-btn btn-send"
-              :class="{ active: activeBtnSend }"
+              :class="{ active: activeBtnSend, disabled: processStatus === 'error' }"
               @click="handleSendVoiceMsg"
-              @touchstart="activeBtnSend = true"
+              @touchstart="processStatus !== 'error' && (activeBtnSend = true)"
               @touchend="activeBtnSend = false"
               @touchcancel="activeBtnSend = false"
             >
@@ -143,18 +150,18 @@
           </view>
 
           <!-- 底部大圆背景和异形按钮 (仅在录音/处理阶段显示) -->
-          <template v-else>
+          <template v-if="processStatus === 'recording' || processStatus === 'processing'">
             <!-- 大圆背景 -->
             <view :class="[classPrefix + '-audio-input__ft__bg']" />
 
             <!-- 左侧按钮 -->
             <view
               class="shape-btn left-btn"
-              :class="{ active: interactStatus === 'release_cancel' }"
+              :class="{ active: interactStatus === 'release_cancel' || processStatus === 'error'}"
             >
               <view
-                v-if="interactStatus === 'release_cancel'"
-                :key="'cancel-' + (interactStatus === 'release_cancel')"
+                v-if="interactStatus === 'release_cancel' || processStatus === 'error'"
+                :key="'cancel-' + (interactStatus === 'release_cancel' || processStatus === 'error')"
                 class="btn-hint"
               >
                 <text class="word word-1">
@@ -248,7 +255,8 @@ export default uniComponent({
   data() {
     return {
       classPrefix: name,
-
+      recordAuthSetting: false, // 是否已授权语音输入
+      recordAuthStatus: true, // 是否展示拒绝授权文案
       // UI 状态
       showMask: false,
       activeBtnCancel: false,
@@ -271,23 +279,17 @@ export default uniComponent({
       // 手势追踪
       startTouch: { x: 0, y: 0 },
 
-      // 权限状态
-      recordAuthStatus: true,
-
       isStarted: false, // 是否开始录音
-      startTime: 0, // 开始录音时间戳
-      recordCountDown: -1, // 倒计时秒数
-
-      // 打字机效果
-      typeWriterTimer: null, // 打字机定时器
-      isTyping: false, // 是否正在打字
+      isManagerBusy: false,      // stop后等待识别完成
+      ignoreNextOnStop: false,   // 取消时忽略 onStop 回调对UI的影响
+      managerRecording: false,
     };
   },
 
   computed: {
     // 气泡样式类名
     bubbleStatusClass() {
-      if (this.interactStatus === 'release_cancel') return 'bubble-red';
+      if (this.interactStatus === 'release_cancel' || this.processStatus === 'error') return 'bubble-red';
       if (
         this.interactStatus === 'release_convert'
         || this.processStatus === 'processing'
@@ -298,26 +300,15 @@ export default uniComponent({
       return 'bubble-blue';
     },
   },
-
-  watch: {
-    /**
-     * 监听交互状态变化
-     * 当滑到转文字区域时立即开始打字机效果
-     */
-    interactStatus(newVal) {
-      if (newVal === 'release_convert' && this.voiceInfo.voiceText) {
-        console.log('[ChatRecord] 进入转文字区域，开始打字机效果');
-        this.translateResult = '';
-        this.typeWriter(this.voiceInfo.voiceText, 30);
-      }
-    },
-  },
-
   mounted() {
     this.initRecordManager();
   },
 
   beforeDestroy() {
+    if (manager) {
+      manager.stop();
+    }
+    this.resetState();
     if (recordTimer) {
       clearInterval(recordTimer);
       recordTimer = null;
@@ -325,9 +316,6 @@ export default uniComponent({
     if (startRecordTimer) {
       clearTimeout(startRecordTimer);
       startRecordTimer = null;
-    }
-    if (manager) {
-      manager.stop();
     }
   },
 
@@ -341,45 +329,61 @@ export default uniComponent({
       if (!manager) return;
 
       manager.onStart = () => {
-        console.log('onStart 开始录音=====');
+        console.error('onStart 开始录音=====');
+        this.managerRecording = true;
         this.processStatus = 'recording';
       };
 
 
       manager.onRecognize = (res) => {
-        console.error('onRecognize 识别中=====:', res.result);
+        console.error('onRecognize 识别中=====:', res);
         if (res.result && !res.end) {
           this.voiceInfo.voiceText = res.result;
           if (this.interactStatus === 'release_convert') {
-            this.typeWriter(this.voiceInfo.voiceText, 30);
+            this.translateResult = this.voiceInfo.voiceText;
           }
         }
       };
 
       manager.onStop = (res) => {
         console.error('onStop 录音完成====:', res);
+        this.managerRecording = false;
+        this.isManagerBusy = false;
+
+        if (this.ignoreNextOnStop) {
+          this.ignoreNextOnStop = false;
+          return;
+        }
+
+        if (this.processStatus === 'error') return;
+
         const { tempFilePath, duration } = res;
         this.voiceInfo.voicePath = tempFilePath;
+        this.voiceInfo.voiceText = res.result || '';
         this.voiceInfo.duration = Math.floor(duration / 1000) || 1;
+        this.translateResult = this.voiceInfo.voiceText;
 
-        // TODO: 调用语音识别 API
-        this.handleRecordFinish();
+        this.processStatus = 'confirm';
       };
 
       manager.onError = (err) => {
         console.error('[ChatRecord] 录音错误:', err);
+        this.isManagerBusy = false;
+        this.managerRecording = false;
+        // 先标记错误状态，防止 onStop 回调覆盖
         this.processStatus = 'error';
         this.interactStatus = 'normal';
         this.translateResult = '';
+        this.activeBtnCancel = false;
+        this.activeBtnSend = false;
+
         // 给用户友好的错误提示
         uni.showToast({
           icon: 'none',
-          title: err.msg || '录音识别失败，请重试',
+          title: '录音识别失败，请重试',
           duration: 2000,
         });
-        if (manager) {
-          manager.stop();
-        }
+
         this.$emit('error', err);
       };
     },
@@ -412,17 +416,18 @@ export default uniComponent({
      */
     async applyAuth() {
       return new Promise((resolve, reject) => {
-        uni.getSetting({
-          success: (res) => {
-            const authSettings = Object.keys(res.authSetting);
-            // 是否已经授权了
-            this.recordAuthSetting = authSettings.includes('scope.record');
-            // 当前授权状态
-            this.recordAuthStatus = !!res.authSetting['scope.record'];
-            resolve(this.recordAuthSetting);
+        uni.authorize({
+          scope: 'scope.record',
+          success: () => {
+            this.recordAuthSetting = true;
+            this.recordAuthStatus = true;
+            resolve(true);
           },
-          fail: () => {
-            reject(false);
+          fail: (err) => {
+            // 用户拒绝授权，需要引导去设置页面
+            this.recordAuthSetting = false;
+            this.recordAuthStatus = false;
+            reject(err);
           },
         });
       });
@@ -462,6 +467,17 @@ export default uniComponent({
         e.preventDefault();
       }
 
+
+      if (this.isManagerBusy) {
+        uni.showToast({ icon: 'none', title: '识别中，请稍候…' });
+        return;
+      }
+
+      // 如果之前处于错误状态，先完全重置
+      if (this.processStatus === 'error') {
+        this.resetState();
+      }
+
       this.isStarted = true;
 
       // 检查授权
@@ -487,11 +503,10 @@ export default uniComponent({
 
       this.showMask = true;
       this.processStatus = 'recording';
-      // this.interactStatus = 'normal';
-      // this.translateResult = '';
-
-      // 触发开始事件
-      // this.$emit('start');
+      this.interactStatus = 'normal';
+      this.translateResult = '';
+      // 重置录音数据
+      this.voiceInfo = { voicePath: '', voiceText: '', duration: 0 };
 
       console.log('[ChatRecord] 模拟录音开始');
       // 500ms 后开始录音
@@ -505,25 +520,10 @@ export default uniComponent({
           this.initRecordManager();
         }
         if (manager) {
+          this.isManagerBusy = true;   // 一旦start，先认为会进入一次完整流程
           manager.start({ duration: 60000, lang: 'zh_CN' });
         }
-
-        // 最多支持 60s 连续录音，50s 开始倒计时
-      //   recordTimer = setInterval(() => {
-      //     const recordTime = new Date().getTime() - this.startTime;
-      //     if (recordTime > 50000) {
-      //       if (this.recordCountDown === -1) {
-      //         this.recordCountDown = 10;
-      //       } else {
-      //         this.recordCountDown -= 1;
-      //       }
-      //     }
-      //     if (recordTime > 60000) {
-      //       console.log('录音超时，自动停止');
-      //       this.stopRecord();
-      //     }
-      //   }, 1000);
-      }, 500);
+      }, 100);
     },
 
     /**
@@ -578,20 +578,19 @@ export default uniComponent({
         clearTimeout(startRecordTimer);
         startRecordTimer = null;
       }
-
-      this.recordCountDown = -1;
-
-      if (this.interactStatus === 'release_cancel') {
-        // 取消录音
-        this.cancelRecord();
-        return;
-      } if (this.interactStatus === 'release_convert') {
-        // 转换为文字
-        this.convertToText();
-        return;
+      // 关键：只有在录音真正开始后，才调用 stop，否则插件会报错 stopBeforeStartEvent
+      if (manager && this.managerRecording) {
+        manager.stop();
       }
-      // 直接发送语音
-      this.sendVoice();
+      if (this.interactStatus === 'release_cancel') {
+        this.ignoreNextOnStop = true;  // 取消时，不要让 onStop 把UI推到confirm
+        this.cancelRecord();          // 这里可以继续reset UI
+      } else if (this.interactStatus === 'release_convert') {
+        // UI可以先进入处理/确认态，最终以onStop拿到的result为准
+        this.convertToText();
+      } else {
+        // 正常松手：等 onStop 里把 confirm / 文本填好
+      }
     },
 
     /**
@@ -620,22 +619,14 @@ export default uniComponent({
       console.log('[ChatRecord] 转换为文字');
       this.processStatus = 'confirm';
       this.interactStatus = 'normal';
-
-      // 打字机效果已在 watch.interactStatus 中处理
-      // 如果滑到转文字区域时已显示部分内容，继续完成剩余部分
-      if (!this.isTyping && this.voiceInfo.voiceText) {
-        const remainingText = this.voiceInfo.voiceText.slice(this.translateResult.length);
-        if (remainingText) {
-          this.typeWriter(remainingText, 30);
-        }
-      }
+      this.translateResult = this.voiceInfo.voiceText;
     },
 
     /**
      * 直接发送语音
      */
     sendVoice() {
-      console.log('[ChatRecord] 发送语音');
+      console.log('[ChatRecord] 发送语音', this.voiceInfo);
       this.$emit('send', {
         voicePath: this.voiceInfo.voicePath,
         voiceText: this.voiceInfo.voiceText,
@@ -645,19 +636,13 @@ export default uniComponent({
     },
 
     /**
-     * 录音完成处理
-     */
-    handleRecordFinish() {
-      // 模拟识别延迟
-      setTimeout(() => {
-        this.processStatus = 'confirm';
-      }, 500);
-    },
-
-    /**
      * 发送转文字结果
      */
     handleSendVoiceMsg() {
+      // 错误状态下禁用发送
+      if (this.processStatus === 'error') {
+        return;
+      }
       this.$emit('recognize', this.translateResult);
       this.resetState();
     },
@@ -666,6 +651,11 @@ export default uniComponent({
      * 取消发送
      */
     handleCancelSend() {
+      // 错误状态下禁用取消，只允许重置状态
+      if (this.processStatus === 'error') {
+        this.resetState();
+        return;
+      }
       this.$emit('cancel');
       this.resetState();
     },
@@ -676,68 +666,33 @@ export default uniComponent({
      * 重置所有状态
      */
     resetState() {
+      // 清除录音相关定时器
+      if (recordTimer) {
+        clearInterval(recordTimer);
+        recordTimer = null;
+      }
+      if (startRecordTimer) {
+        clearTimeout(startRecordTimer);
+        startRecordTimer = null;
+      }
+
+      // 只有真正录音开始过才stop
+      if (manager && this.managerRecording) {
+        manager.stop();
+      }
+      // 重置录音状态
+      this.isStarted = false;
+      this.managerRecording = false;
       this.showMask = false;
       this.processStatus = 'idle';
       this.interactStatus = 'normal';
       this.translateResult = '';
-      this.voiceInfo = { voicePath: '', duration: 0 };
+      this.voiceInfo = { voicePath: '', voiceText: '', duration: 0 };
       this.activeBtnCancel = false;
       this.activeBtnSend = false;
-
-      // 清除打字机定时器
-      if (this.typeWriterTimer) {
-        clearTimeout(this.typeWriterTimer);
-        this.typeWriterTimer = null;
-      }
-      this.isTyping = false;
+      this.isManagerBusy = false;
     },
 
-    // ==================== 打字机效果 ====================
-
-    /**
-     * 打字机效果 - 逐字显示文本
-     * @param {string} text - 要显示的完整文本
-     * @param {number} speed - 打字速度（毫秒/字），默认 50ms
-     * @returns {Promise} - 打字完成后 resolve
-     */
-    typeWriter(text, speed = 50) {
-      return new Promise((resolve) => {
-        // 如果有正在进行的打字机效果，先清除
-        if (this.typeWriterTimer) {
-          clearTimeout(this.typeWriterTimer);
-          this.typeWriterTimer = null;
-        }
-
-        this.isTyping = true;
-        let index = 0;
-        this.translateResult = '';
-
-        const typeChar = () => {
-          if (index < text.length) {
-            this.translateResult += text.charAt(index);
-            index += 1;
-            this.typeWriterTimer = setTimeout(typeChar, speed);
-          } else {
-            this.isTyping = false;
-            this.typeWriterTimer = null;
-            resolve();
-          }
-        };
-
-        typeChar();
-      });
-    },
-
-    /**
-     * 停止打字机效果
-     */
-    stopTypeWriter() {
-      if (this.typeWriterTimer) {
-        clearTimeout(this.typeWriterTimer);
-        this.typeWriterTimer = null;
-      }
-      this.isTyping = false;
-    },
   },
 });
 </script>

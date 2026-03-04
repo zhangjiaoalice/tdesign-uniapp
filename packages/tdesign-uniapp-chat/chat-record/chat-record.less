@@ -59,6 +59,8 @@
 @chat-record-color-red: #ff5252;
 @chat-record-color-white: #FFFFFF;
 
+@chat-record-cancel-font-size: 32rpx;
+
 // 红色气泡（取消）
 @chat-record-bubble-red-min-width: 160rpx;
 @chat-record-bubble-red-padding: 24rpx 32rpx;
@@ -330,6 +332,13 @@
           (@chat-record-dot-shadow-offset * 4) 0 0 @chat-record-color-white;
         margin-right: @chat-record-dot-margin-right;
       }
+    }
+
+
+    .cancel-text {
+      color: @chat-record-color-white;
+      font-size: @chat-record-cancel-font-size;
+      font-weight: 600;
     }
 
     // 转文字内容
@@ -665,6 +674,31 @@
 
             &.active {
               background-color: @chat-record-send-btn-bg-active;
+            }
+
+            // 禁用状态
+            &.disabled {
+              background-color: #999;
+              opacity: 0.5;
+              pointer-events: none;
+
+              text {
+                color: rgba(255, 255, 255, 0.6);
+              }
+            }
+          }
+
+          // Cancel 按钮禁用状态
+          &.btn-cancel.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+
+            .icon-wrapper {
+              background-color: rgba(255, 255, 255, 0.1);
+            }
+
+            .btn-text {
+              color: rgba(255, 255, 255, 0.6);
             }
           }
         }
